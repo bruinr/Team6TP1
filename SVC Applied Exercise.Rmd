@@ -1,0 +1,148 @@
+---
+title: "SVC Applied Exercise"
+author: "Carrington Metts"
+date: "3/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective
+
+The goal of this exercise is to use a support vector classifier and support vector
+machines (SVMs) to predict whether a car will get high or low gas mileage. To do so, 
+we will use the Auto dataset from the ISLR library. The dataset contains 392 observations of 
+9 variables. 
+
+## Load Data
+The Auto data comes from the ISLR library. We will also use various SVM functions 
+from the e1071 library. 
+
+```{r load, warning=FALSE}
+library(ISLR) #Auto data
+library(e1071) #SVM functions
+data(Auto)
+```
+
+## Prepare the Data
+The goal of the problem is to predict a car's mileage (MPG) based on the other 
+8 variables. In the original dataset, mpg is a continuous numeric variable. 
+Recall that support vector classifiers and machines are typically applied to 
+binary classification problems. Therefore, we must first create a new variable 
+that is 0 if the MPG is below the dataset's median, and 1 otherwise. In order for 
+the support vector classifier and machine to work, the variable must be coded as a factor.
+
+```{r mpg}
+medianMPG <- median(Auto$mpg)
+Auto$binaryMPG <- as.factor(Auto$mpg > medianMPG)
+str(Auto)
+```
+
+The new binaryMPG variable will be TRUE if the car has better gas mileage than 
+the median, and FALSE otherwise. 
+
+Now that the new representation of mpg has been created, we must remove the original
+mpg from the dataframe. We also remove the name variable, since it is a factor that 
+will introduce a large number of unwanted coefficients into the model. 
+
+```{r clearmpg}
+Auto <- subset(Auto, select=-c(mpg, name))
+```
+
+## Support Vector Classifier 
+As a reminder, a support vector classifier (also known as a soft margin classifier)
+creates a linear hyperplane to separate
+the dataset into two regions. Now that the response variable (MPG) has been 
+converted to a binary categorical form, we can apply a support vector classifier
+to predict whether a car's MPG will fall below the median. 
+
+In this case, we assume there is no hyperplane that will perfectly separate the data. 
+Therefore, we must allow some observations to fall inside the margins of the hyperplane.
+The number and severity of these margin violations is determined by the cost tuning
+parameter. When the cost is small, each violation will incur a small penalty, so 
+the margins will be large. When cost is large, each violation will be much more 
+detrimental, so the margins will be very small. 
+In the model, the optimal cost will be determined by cross-validation. 
+
+To create the cross-validated model, we use the 'tune' function. Since SVCs are 
+linear, we use a linear kernel. We also specify the type of model (in this case, SVM 
+(support vector machine)), formula, dataset, and a list of possible costs. The general syntax is:
+
+```
+tune.out <- tune(svm, y~x, data=data_frame, kernel='linear', 
+                 ranges=list(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+```
+
+Once the cross-validated models are created, we can select the model with the 
+lowest error. (Since the cost does not affect the complexity of the model, the 
+one-standard-deviation rule is not necessary). 
+
+``` {r svc}
+set.seed(12)
+tune.out <- tune(svm, binaryMPG~., data=Auto, kernel='linear', 
+                 ranges=list(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+summary(tune.out)
+
+bestmod <- tune.out$best.model
+summary(bestmod)
+```
+
+In this case, the best model has a cost of 0.01. The model misclassifies 9.17% of the 
+observations (error), with a standard deviation of 5.09% (dispersion).
+There are 166 support vectors, 
+which means that 166 of the 392 observations lie directly on or on the wrong 
+side of the hyperplane margin. A change in any of these 166 observations would 
+affect the final result. 
+
+In this case, we did not split the data into training and testing sets. However, 
+we can still determine the predictions and generate a confusion matrix to see 
+where the model misclassifies entries. To obtain the predictions, we use the 
+predict function with the correct model and the list of all X data. 
+
+```{r lin_confusion}
+yhat <- predict(bestmod, newdata = subset(Auto, select=-c(binaryMPG)))
+table(predict=yhat, truth=Auto$binaryMPG)
+```
+
+Here, we can see that the model mostly correctly predicts whether a car will get 
+good gas mileage. 
+
+### Plots (and why we shouldn't use them)
+
+We can also use the plot() command to visualize the dataset and hyperplane. The 
+syntax is: 
+```
+plot(model, dataframe, x1~x2, slice=list())
+```
+However, when there are more than two features, the plots may be difficult to interpret. 
+In this case, it is necessary to use the slice argument to fix the values of the other 
+features. Doing so means we see only a 2-dimensional slice of the 7-dimensional data.
+
+```{r plotsvc}
+plot(bestmod, Auto, weight~acceleration, slice=list(displacement=300, 
+                                               horsepower=150, 
+                                               year=90,
+                                               cylinders=6,
+                                               origin=1))
+```
+
+This plot shows that most of the cars are predicted to have bad gas mileage (yellow),
+but some cars with lower weight may have good gas mileage. However, this assumes 
+that all of the cars have the same displacement, horsepower, year, number of cylinders,
+and origin (which is what we specified in the 'slice' argument). We can create a new plot
+with different values of these parameters: 
+
+```{r plotsvc2}
+plot(bestmod, Auto, weight~acceleration, slice=list(displacement=200, 
+                                               horsepower=50, 
+                                               year=90,
+                                               cylinders=6,
+                                               origin=1))
+```
+
+Now, it looks like the model is predicting that most of the cars will have good 
+gas mileage. Obviously, this is misleading- but it does serve as a good reminder 
+of why we can't project a 7-dimensional space into 2 dimensions and expect to 
+extract much useful information! 
