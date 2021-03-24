@@ -1,5 +1,5 @@
 ---
-title: "Team 6 Applied Exercise"
+title: "Team 6 Applied Exercise" 
 author: "Carrington Metts"
 date: "3/5/2021"
 output: html_document
@@ -8,25 +8,27 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+# {.tabset}
 
-## Objective
+## Objective {.tabset}
 
 The goal of this exercise is to use a support vector classifier and support vector
 machines (SVMs) to predict whether a car will get high or low gas mileage. To do so, 
 we will use the Auto dataset from the ISLR library. The dataset contains 392 observations of 
 9 variables. 
 
-## Load Data
+## Load Data {.tabset}
 The Auto data comes from the ISLR library. We will also use various SVM functions 
 from the e1071 library. 
 
 ```{r load, warning=FALSE}
+rm(list=ls())
 library(ISLR) #Auto data
 library(e1071) #SVM functions
 data(Auto)
 ```
 
-## Prepare the Data
+## Prepare the Data {.tabset}
 The goal of the problem is to predict a car's mileage (MPG) based on the other 
 8 variables. In the original dataset, mpg is a continuous numeric variable. 
 Recall that support vector classifiers and machines are typically applied to 
@@ -35,19 +37,41 @@ that is 0 if the MPG is below the dataset's median, and 1 otherwise. In order fo
 the support vector classifier and machine to work, the variable must be coded as a factor.
 
 ```{r mpg}
+#find median MPG
 medianMPG <- median(Auto$mpg)
+#code MPG as a factor
 Auto$binaryMPG <- as.factor(Auto$mpg > medianMPG)
-str(Auto)
 ```
+
+The new binaryMPG variable will be TRUE if the car has better gas mileage than 
+the median, and FALSE otherwise. 
 
 Now that the new representation of mpg has been created, we must remove the original
-mpg from the dataframe. 
+mpg from the dataframe. We also remove the name variable, since it is a factor that 
+will introduce a large number of unwanted coefficients into the model. 
+
 
 ```{r clearmpg}
-Auto <- subset(Auto, select=-c(mpg))
+Auto <- subset(Auto, select=-c(mpg, name))
 ```
 
-## Support Vector Classifier 
+Finally, we want to scale the numeric columns to have a mean of 0 and a standard 
+deviation of 1. This can be done automatically when creating one SVM model, but 
+not when performing cross-validation, as we are about to do. 
+
+```{r scale}
+Auto$cylinders <- scale(Auto$cylinders)
+Auto$displacement <- scale(Auto$displacement)
+Auto$horsepower <- scale(Auto$horsepower)
+Auto$weight <- scale(Auto$weight)
+Auto$acceleration <- scale(Auto$acceleration)
+Auto$year <- scale(Auto$year)
+Auto$origin <- scale(Auto$origin)
+```
+
+
+## Support Vector Classifier {.tabset}
+### Explanation 
 As a reminder, a support vector classifier (also known as a soft margin classifier)
 creates a linear hyperplane to separate
 the dataset into two regions. Now that the response variable (MPG) has been 
@@ -75,28 +99,77 @@ Once the cross-validated models are created, we can select the model with the
 lowest error. (Since the cost does not affect the complexity of the model, the 
 one-standard-deviation rule is not necessary). 
 
+### Model
+
 ``` {r svc}
 set.seed(12)
 tune.out <- tune(svm, binaryMPG~., data=Auto, kernel='linear', 
-                 ranges=list(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+                 ranges=list(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 100)), scale=TRUE)
 summary(tune.out)
 
 bestmod <- tune.out$best.model
 summary(bestmod)
 ```
 
-In this case, the best model has a cost of 1. The model misclassifies 9.29% of the 
-observations (error), with a standard deviation of 3.61% (dispersion).
-There are 300 support vectors, 
-which means that 300 of the 392 observations lie directly on or on the wrong 
-side of the hyperplane margin. A change in any of these 300 observations would 
+In this case, the best model has a cost of 0.01. The model misclassifies 9.17% of the 
+observations (error), with a standard deviation of 5.09% (dispersion).
+There are 166 support vectors, 
+which means that 166 of the 392 observations lie directly on or on the wrong 
+side of the hyperplane margin. A change in any of these 166 observations would 
 affect the final result. 
 
-```{r plotsvc}
-plot(bestmod, Auto, weight~year)
+### Predictions
+
+In this case, we did not split the data into training and testing sets. However, 
+we can still determine the predictions and generate a confusion matrix to see 
+where the model misclassifies entries. To obtain the predictions, we use the 
+predict function with the correct model and the list of all X data. 
+
+```{r lin_confusion}
+yhat <- predict(bestmod, newdata = subset(Auto, select=-c(binaryMPG)))
+table(predict=yhat, truth=Auto$binaryMPG)
 ```
 
-## Polynomial Support Vector Machine
+Here, we can see that the model mostly correctly predicts whether a car will get 
+good gas mileage. 
+
+### Plots (and why we shouldn't use them)
+
+We can also use the plot() command to visualize the dataset and hyperplane. The 
+syntax is: 
+```
+plot(model, dataframe, x1~x2, slice=list())
+```
+However, when there are more than two features, the plots may be difficult to interpret. 
+In this case, it is necessary to use the slice argument to fix the values of the other 
+features. Doing so means we see only a 2-dimensional slice of the 7-dimensional data.
+
+```{r plotsvc}
+plot(bestmod, Auto, weight~acceleration) 
+```
+
+This plot shows that most of the cars are predicted to have bad gas mileage (yellow),
+but some cars with below-average weight may have good gas mileage. However, this assumes 
+that all of the cars have the same displacement, horsepower, year, number of cylinders,
+and origin (which is what we specified in the 'slice' argument). We can create a new plot
+with different values of these parameters: 
+
+```{r plotsvc2}
+plot(bestmod, Auto, weight~acceleration, slice=list(displacement=-0.5, 
+                                               horsepower=-0.5, 
+                                               year=2,
+                                               cylinders=0,
+                                               origin=0))
+```
+
+Now, it looks like the model is predicting that most of the cars will have good 
+gas mileage. Obviously, this is misleading- but it does serve as a good reminder 
+of why we can't project a 7-dimensional space into 2 dimensions and expect to 
+extract much useful information! 
+
+## Polynomial Support Vector Machine {.tabset}
+
+### Model
 
 The polynomial support vector machine (SVM) is the same as the linear SVC, but 
 with a polynomial boundary between the regions instead of a linear one. The syntax
@@ -110,21 +183,61 @@ polysvm <- tune(svm, binaryMPG~., data=Auto, kernel='polynomial',
 summary(polysvm) 
 ```
 
-## Radial Support Vector Machine
+A polynomial support vector machine applies the polynomial to support vectors, not 
+features. Therefore, a higher-order polynomial does not result in a larger feature 
+space or more complex model. This means we do not need to use the one-standard-deviation 
+rule to determine the best model. Instead, we use the same code as above:
+
+```{r bestpoly}
+bestpoly <- polysvm$best.model
+summary(bestpoly)
+```
+
+In this case, the best model is a degree-3 polynomial with a cost of 10. This model
+misclassifies 7.15% of the observations (with a standard deviation of 3.38%). This
+version has only 99 support vectors, instead of the 168 that were seen in the linear model. 
+
+### Plots
+
+We can make another plot:
+
+```{r plotpoly}
+plot(bestpoly, Auto, weight~acceleration) 
+```
+Although the plotted boundary still does not accurately reflect the model predictions,
+we can see that the shape is curved, instead of linear. 
+
+
+## Radial Support Vector Machine {.tabset}
+
+### Model
 Finally, a radial kernel may be used to draw a closed shape around one class of 
 observations. Again, the syntax is the same as before, but this time we will also 
 add cross-validation to find the optimal gamma. Gamma is a tuning parameter that determines
 the effect that neighboring observations will have on classifying the observation in question.
-If gamma is large, then distant observations will have amost no effect on the classification. 
+If gamma is large, then distant observations will have almost no effect on the classification. 
 If gamma is small, then more distant observations may affect the final prediction. 
 
 ``` {r radial}
-radsvm <- tune(svm, binaryMPG~., data=Auto, kernel='polynomial', 
+radsvm <- tune(svm, binaryMPG~., data=Auto, kernel='radial', 
                 ranges=list(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 100), 
                             gamma=c(0.5,1,2,3,4)))
 summary(radsvm) 
 bestrad <- radsvm$best.model
 summary(bestrad)
+
 ```
+
+Here, the best model has a cost of 1 and a gamma of 0.5, with 125 support vectors. 
+This model misclassifies 6.88% of observations, with a standard deviation of 3.95%. 
+
+### Plots
+
+Again, a plot: 
+
+```{r plotrad}
+plot(bestrad, Auto, weight~acceleration) 
+```
+Here, we can see the radial SVM boundary. 
 
 
