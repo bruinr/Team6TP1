@@ -3,8 +3,7 @@ title: "9.6.2 - Support Vector Machine"
 author: "Team 6"
 date: "3/8/2021"
 output: 
-  pdf_document:
-    latex_engine: xelatex
+  html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -12,9 +11,34 @@ knitr::opts_chunk$set(echo = TRUE)
 library(e1071)
 ```
 
-### **9.6.2 - Support Vector Machine**
-In order to fit an SVM using a non-linear kernel, we once again use the svm() function. However, now we use a different value of the parameter kernel. To fit an SVM with a polynomial kernel we use kernel="polynomial", and to fit an SVM model with a radial kernel we use kernel="radial". In the former case, we also use the degree arguement to specify a degree for the polynomial kernal (this is d in (9.22)), and in the latter case we use gamma to specify a value of Y for the radial basis kernel (9.24).
-  We first generate some data with a non-linear class boundary, as follows:
+# Support Vector Machines {.tabset}
+
+## **9.6.2 - Support Vector Machine** {.tabset}
+
+SVM with **non-linear kernels**
+
+In order to fit an SVM using a non-linear kernel, we once again use the **svm()** function. However, now we use a different value of the parameter kernel.
+
+**Polynomial Kernel**: To fit an SVM with a polynomial kernel we use **kernel="polynomial"**
+
+* Uses the **degree=** argument to specify a degree for polynomial
+
+**Radial Kernel**: To fit an SVM model with a radial kernel we use **kernel="radial"**
+
++ Uses **gamma=** to specify a value of  for the radial basis kernel
+
+Again, we want to remember that the *cost argument* allows us to specify the *cost of violation* to the margin
+
++ When cost is high, margins will be *narrow* and there will be *few support* on or violating the margin
+
+**Goal of SVM**: Find a hyperplane, separating two classes of y values
+
+<br>
+
+This specific lab will look into a SVM model utilizing a radial kernel
+
+
+We first generate some data with a *non-linear class boundary*, as follows:
 ```{r}
 set.seed(1)
 x = matrix(rnorm(200*2), ncol=2)
@@ -24,14 +48,18 @@ y = c(rep(1,150), rep(2,50))
 dat = data.frame(x=x, y=as.factor(y))
 ```
   
-  Plotting the data makes it clear that the class boundary is indeed non-linear:
+
+Plotting the data makes it clear that the class boundary is indeed non-linear:
+
 ```{r }
 plot(x, col=y)
 ```
+**Not linearly separable**
+
+<br>
 
 
-
-  The data is randomly split into training and testing groups. We then fit th training data using the svm() function with a radial kernel and Y = 1:
+From here, the data is randomly split into training and testing groups. We then fit the training data using the **svm()** function with a radial kernel and *gamma* = 1:
 
 ```{r}
 train = sample(200,100)
@@ -39,35 +67,49 @@ svmfit = svm(y~., data=dat[train,], kernel="radial", gamma=1, cost = 1)
 plot(svmfit, dat[train,])
 ```
 
-The plot shows that the resulting SVM has a decidedly non-linear boundary. The summary() function can be used to obtain some information about the SVM fit:
+The plot shows that the resulting SVM has a decidedly non-linear boundary. While it did a good overall job, we are still able to see at least 4 misclassifications
+
+The summary() function can be used to obtain some information about the SVM fit:
 ```{r}
 summary(svmfit)
 
 ```
 
 
-We can see from the figure that there are a fair number of training errors in this SVM fit. If we increase the value of cost, we can reduce the number of training errors. However, this comes at the price of a more irregular decision boundary that seems to be at risk of overfitting the data.
+As we observed earlier from the figure, there are a fair number of training errors present in this SVM fit. If we increase the value of cost, we can reduce the number of training errors. (*However, this comes at the price of a more irregular decision boundary that seems to be at risk of overfitting the data.*)
 ```{r}
 svmfit=svm(y~., data=dat[train, ], kernel='radial', gamma=1, cost=1e5)
 
 plot(svmfit, dat[train, ])
 
 ```
+We can see in this example that the **increase of the cost parameter** from 1 to 100000, the shape goes from close to a circle to a less identifiable figure, that attempts to perfect a non-linear boundary
 
+<br>
 
-We can perform cross-validation using tune() to select the best choice of γ and cost for an SVM with a radial kernel:
+If we want to expedite the process of choosing the proper gamma and cost parameters for our model, we can perform cross-validation using **tune()**
+
++ **tune()** will select the best choice of *gamma* and *cost* for an SVM with a radial kernel 
+
++ We would use *degree* instead of *gamma* for a polynomial kernel
+
 
 ```{r}
 set.seed(1)
 tune.out = tune(svm, y~., data=dat[train, ], kernel="radial", ranges=list(cost=c(0.1,1,10,100,1000), gamma = c(0.5,1,2,3,4)))
 summary(tune.out)
 ```
+The book tells us the best choice involves a *cost* = 1 and *gamma* = 2, but our model shows us multiple locations where error is minimized (0.07) and provides us the first occurring in chronological order. 
+
+This gives us a *cost* = 1 and *gamma* = 2
+
+<br>
 
 
-Therefore, the best choice of parameters involves cost=1 and gamma=2. We can view the test set predictions for this mdoel by applying the predict() functoin to the data. Notice that to do this we subset the dataframe dat using -train as an index set.
+We can view the **test set predictions** for this model by applying the **predict()** function to the data. 
+Note: To do this, we subset the dataframe, *dat*, using -train as an index set.
 ```{r}
 table(true=dat[-train,"y"], pred=predict(tune.out$best.model, newdata=dat[-train,]))
 ```
+The book gave us an example with a 50/50 split between the training and testing group, with the model resulting in 12% of observations being misclassified by this SVM with a radial kernel (Book misclassified 10%)
 
-
-10% of test observations are misclassified by this SVM
